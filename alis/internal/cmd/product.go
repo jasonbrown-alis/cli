@@ -71,8 +71,7 @@ var createProductCmd = &cobra.Command{
 			pterm.Error.Println(err)
 			return
 		}
-
-		owner, err := askUserString(fmt.Sprintf("Please provide an owner who is a user within the organisation (for example name.surname@%s):", organisation.GetDomain()), `(?m)^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,10})$`)
+		owner, err := askUserString("Please provide an owner (email): ", `(?m)^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,10})$`)
 		if err != nil {
 			pterm.Error.Println(err)
 			return
@@ -139,6 +138,8 @@ var createProductCmd = &cobra.Command{
 			"but have not yet been committed.\n" +
 			"Make the necessary changes to the files, commit them before running the `alis product build` " +
 			"command.\n")
+		ptermTip.Printf("You'll need to get a copy of this new product to your local environment.\n"+
+			"Run the command `alis product get %s.%s`", organisationID, productID)
 
 		// Create a product
 		op, err := alisProductsClient.CreateProduct(cmd.Context(), &pbProducts.CreateProductRequest{
@@ -156,18 +157,19 @@ var createProductCmd = &cobra.Command{
 			return
 		}
 
+		// TODO: how do we handle an async flag in this case? Product needs to be created before we can create a deployment
 		// check if we need to wait for operation to complete.
-		if asyncFlag {
-			pterm.Debug.Printf("GetOperation:\n%s\n", op)
-			pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
-		} else {
-			// wait for the long-running operation to complete.
-			err := wait(cmd.Context(), op, "Creating "+organisation.GetName()+"/products/"+productID+" (may take a few minutes)", "Created "+organisation.GetName()+"/products/"+productID, 300, true)
-			if err != nil {
-				pterm.Error.Println(err)
-				return
-			}
+		//if asyncFlag {
+		//	pterm.Debug.Printf("GetOperation:\n%s\n", op)
+		//	pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
+		//} else {
+		// wait for the long-running operation to complete.
+		err = wait(cmd.Context(), op, "Creating "+organisation.GetName()+"/products/"+productID+" (may take a few minutes)", "Created "+organisation.GetName()+"/products/"+productID, 300, true)
+		if err != nil {
+			pterm.Error.Println(err)
+			return
 		}
+		//}
 
 		// Get a product resource
 		product, err := alisProductsClient.GetProduct(cmd.Context(),
@@ -177,13 +179,47 @@ var createProductCmd = &cobra.Command{
 			return
 		}
 
+		// set up the initial development deployment for the product
+		initialProductDeployment, err := createInitialProductDeployment(cmd.Context(), product.GetName())
+		if err != nil {
+			pterm.Error.Println(err)
+			return
+		}
+		pterm.DefaultSection.Printf("Deploying %s (%s)", initialProductDeployment.GetDisplayName(), initialProductDeployment.GetGoogleProjectId())
+
+		pterm.Info.Printf("Updating deployment: %s\nversion: %s -> %s...\n", initialProductDeployment.GetGoogleProjectId(), initialProductDeployment.GetVersion(), product.GetVersion())
+		op, err = alisProductsClient.UpdateProductDeployment(cmd.Context(), &pbProducts.UpdateProductDeploymentRequest{
+			ProductDeployment: &pbProducts.ProductDeployment{
+				Name:    initialProductDeployment.GetName(),
+				Version: product.GetVersion(),
+			},
+			UpdateMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"version", "envs"},
+			},
+		})
+		if err != nil {
+			pterm.Error.Println(err)
+			return
+		}
+
+		// check if we need to wait for operation to complete.
+		if asyncFlag {
+			pterm.Debug.Printf("GetOperation:\n%s\n", op)
+			pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
+		} else {
+			// wait for the long-running operation to complete.
+			err := wait(cmd.Context(), op, "Updating "+initialProductDeployment.GetName(), "Updated "+initialProductDeployment.GetName(), 300, true)
+			if err != nil {
+				pterm.Error.Println(err)
+				return
+			}
+		}
+
 		// display some user instructions to perform once a new product has been created.
 		ptermTip.Println("Now that you have a new product there are a few minor things you need to take care of:")
-		pterm.Printf("👉 Your product has a new service account: alis-exchange@%s.iam.gserviceaccount.com. The following permissions are required:\n"+
-			"a. Navigate to https://console.cloud.google.com/billing and give the Billing Account User role to relevant billing account you will be using for your ProductDeployments.\n   (the Product Service Account needs to be able to allocate Billing Accounts to any deployments)\n"+
-			"b. Navigate to https://admin.google.com/ac/roles and assign the Groups Editor role to this service account. (the Product Service account needs to be able to create a group for each deployment)\n", product.GetGoogleProjectId())
-		pterm.Println("👉 Your product has a new service account")
-		pterm.Printf("👉 Retrieve a copy of your repository using the command: " + pterm.LightYellow(fmt.Sprintf("alis product get %s.%s \n", organisationID, productID)))
+		pterm.Printf("👉 Your product has a new service account: alis-exchange@%s.iam.gserviceaccount.com.  Navigate to https://console.cloud.google.com/billing and give the Billing Account User role to relevant billing account you will be using for your ProductDeployments.\n", product.GetGoogleProjectId())
+		pterm.Printf("👉 Your product has an initial development deployment, Development 001, with project ID %s. It can be found at %s.\n", initialProductDeployment.GetGoogleProjectId(), initialProductDeployment.GetInfrastructureUri())
+		pterm.Printf("👉 Retrieve a copy of your repository using the command: alis product get %s.%s \n", organisationID, productID)
 		pterm.Println("👉 Open the repository in your IDE and create your first empty commit.")
 	},
 	Args:    validateProductArg,
@@ -396,8 +432,7 @@ var treeProductCmd = &cobra.Command{
 
 			// Retrieve the latest version
 			res, err := alisProductsClient.ListNeuronVersions(cmd.Context(), &pbProducts.ListNeuronVersionsRequest{
-				Parent:   neuron.GetName(),
-				ReadMask: &fieldmaskpb.FieldMask{Paths: []string{"version", "state", "update_time"}},
+				Parent: neuron.GetName(),
 			})
 			if err != nil {
 				pterm.Error.Println(err)

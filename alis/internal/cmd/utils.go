@@ -441,6 +441,74 @@ func createProductDeployment(ctx context.Context, productName string) (*pbProduc
 	return productDeployment, nil
 }
 
+// createInitialProductDeployment creates a new development product deployment for a new product
+func createInitialProductDeployment(ctx context.Context, productName string) (*pbProducts.ProductDeployment, error) {
+
+	// retrieve a copy of the Product Resource
+	product, err := alisProductsClient.GetProduct(ctx, &pbProducts.GetProductRequest{Name: productName})
+	if err != nil {
+		return nil, err
+	}
+
+	// Get additional user input
+	pterm.Info.Println("Great. Let's create a new deployment.  Please provide the following for the deployment:")
+
+	env := pbProducts.ProductDeployment_DEV
+	envStr, err := askUserString("Development or Production environment? (PROD|DEV): ", `^PROD$|^DEV$`)
+	if err != nil {
+		return nil, err
+	}
+	if envStr == "PROD" {
+		env = pbProducts.ProductDeployment_PROD
+	}
+
+	displayName, err := askUserString("Display Name: ", `^[A-Za-z0-9- ]+$`)
+	if err != nil {
+		return nil, err
+	}
+	owner, err := askUserString("Owner (email): ", `(?m)^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,10})$`)
+	if err != nil {
+		return nil, err
+	}
+	ptermTip.Printf("The Product (%s) has a billing account ID of %s\n", product.GetName(), strings.Split(product.GetBillingAccount(), "/")[1]+"\nNavigate to https://console.cloud.google.com/billing to see the billing accounts available to you.")
+	billingAccountID, err := askUserString("ProductDeployment Billing Account ID: ", `^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$`)
+	if err != nil {
+		return nil, err
+	}
+
+	op, err := alisProductsClient.CreateProductDeployment(ctx, &pbProducts.CreateProductDeploymentRequest{
+		Parent: product.GetName(),
+		ProductDeployment: &pbProducts.ProductDeployment{
+			Environment:    env,
+			Owner:          owner,
+			DisplayName:    displayName,
+			BillingAccount: "billingAccounts/" + billingAccountID,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// wait for the long-running operation to complete.
+	err = wait(ctx, op, "Creating a new Product Deployment", "Created a new Product Deployment", 300, true)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := alisOperationsClient.GetOperation(ctx, &pbOperations.GetOperationRequest{Name: op.GetName()})
+	if err != nil {
+		return nil, err
+	}
+
+	productDeployment := &pbProducts.ProductDeployment{}
+	err = res.GetResponse().UnmarshalTo(productDeployment)
+	if err != nil {
+		return nil, err
+	}
+
+	return productDeployment, nil
+}
+
 // askUserProductEnvs list the current envs and ask for updated values.
 func askUserProductEnvs(envs []*pbProducts.Product_Env) ([]*pbProducts.Product_Env, error) {
 
