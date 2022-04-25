@@ -171,7 +171,7 @@ var createProductCmd = &cobra.Command{
 		}
 		//}
 
-		// Get a product resource
+		// Get the product resource
 		product, err := alisProductsClient.GetProduct(cmd.Context(),
 			&pbProducts.GetProductRequest{Name: organisation.GetName() + "/products/" + productID})
 		if err != nil {
@@ -180,7 +180,7 @@ var createProductCmd = &cobra.Command{
 		}
 
 		// set up the initial development deployment for the product
-		initialProductDeployment, err := createInitialProductDeployment(cmd.Context(), product.GetName())
+		initialProductDeployment, err := createInitialProductDeployment(cmd.Context(), product.GetName(), product.GetOwner())
 		if err != nil {
 			pterm.Error.Println(err)
 			return
