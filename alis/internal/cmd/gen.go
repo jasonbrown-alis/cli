@@ -245,6 +245,48 @@ the latest protobufs from the repo into your gRPC service.`),
 			}
 		}
 
+		if genprotoCpp {
+			neuronProtobufFullPath := homeDir + "/alis.exchange/" + organisationID + "/protobuf/cpp/" + organisationID + "/" + productID + "/" + strings.ReplaceAll(neuronID, "-", "/")
+			neuronProtoFullPath := homeDir + "/alis.exchange/" + organisationID + "/proto/" + organisationID + "/" + productID + "/" + strings.ReplaceAll(neuronID, "-", "/")
+
+			// Clear all files in the relevant neuron folder.
+			// TODO: refactor the use of GOPRIVATE envs.
+			cmds := "rm -rf " + neuronProtobufFullPath + " && " +
+				"mkdir -p " + neuronProtobufFullPath + " && " +
+				"protoc --cpp_out=$HOME/alis.exchange/" + organisationID + "/protobuf/cpp -I=$HOME/alis.exchange/google/proto --proto_path=$HOME/alis.exchange/" + organisationID + "/proto " + neuronProtoFullPath + "/*.proto"
+			pterm.Debug.Printf("Shell command:\n%s\n", cmds)
+			out, err := exec.CommandContext(context.Background(), "bash", "-c", cmds).CombinedOutput()
+			if err != nil {
+				pterm.Error.Printf(fmt.Sprintf("%s", out))
+				pterm.Error.Println(err)
+				return
+			}
+			if strings.Contains(fmt.Sprintf("%s", out), "warning") {
+				pterm.Warning.Print(fmt.Sprintf("Generating protocol buffers for python...\n%s", out))
+			}
+			pterm.Success.Printf("Generated protocol buffers for Python.\nProto source: %s\n", neuronProtoFullPath)
+
+			// Publish to protobuf repository if not in local mode.
+			if pushProtocolBuffers {
+				protobufCppRepo := fmt.Sprintf("%s/alis.exchange/%s/protobuf/cpp", homeDir, organisationID)
+
+				// commit protocol buffers in go
+				message := fmt.Sprintf("chore(%s): updated by alis_ CLI", neuronID)
+				_, err := commitTagAndPush(cmd.Context(), protobufCppRepo, neuronProtobufFullPath,
+					message, "", true, true)
+				if err != nil {
+					pterm.Error.Println(err)
+					return
+				}
+				pterm.Success.Println("Published protocol buffers for C++")
+			} else {
+				ptermTip.Printf("The protobufs were generated for local development use only. To formally\n" +
+					"publish them use the `--push` flag to publish them to the \n" +
+					"protobuf libraries.\n")
+			}
+
+		}
+
 		return
 	},
 }
@@ -322,4 +364,5 @@ func init() {
 	// protobuf flags
 	protobufGenCmd.Flags().BoolVarP(&genprotoGo, "go", "", true, pterm.Green("Generate the protocol buffers for Golang"))
 	protobufGenCmd.Flags().BoolVarP(&genprotoPython, "python", "", false, pterm.Green("Generate the protocol buffers for Python"))
+	protobufGenCmd.Flags().BoolVarP(&genprotoCpp, "cpp", "", false, pterm.Green("Generate the protocol buffers for C++"))
 }
