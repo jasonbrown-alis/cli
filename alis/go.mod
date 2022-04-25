@@ -6,7 +6,7 @@ go 1.17
 //replace go.protobuf.alis.dev => ../../alis/protobuf/go/alis
 
 //replace go.lib.alis.dev => ../../alis/os1/os-go
-//replace go.protobuf.alis.alis.exchange => ../../alis.exchange/alis/protobuf/go
+replace go.protobuf.alis.alis.exchange => ../../alis.exchange/alis/protobuf/go
 
 require (
 	github.com/mitchellh/go-homedir v1.1.0

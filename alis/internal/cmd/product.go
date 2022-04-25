@@ -217,9 +217,11 @@ var createProductCmd = &cobra.Command{
 
 		// display some user instructions to perform once a new product has been created.
 		ptermTip.Println("Now that you have a new product there are a few minor things you need to take care of:")
-		pterm.Printf("👉 Your product has a new service account: alis-exchange@%s.iam.gserviceaccount.com.  Navigate to https://console.cloud.google.com/billing and give the Billing Account User role to relevant billing account you will be using for your ProductDeployments.\n", product.GetGoogleProjectId())
+		pterm.Printf("👉 Your product has a new service account: alis-exchange@%s.iam.gserviceaccount.com. The following permissions are required:\n"+
+			"a. Navigate to https://console.cloud.google.com/billing and give the Billing Account User role to relevant billing account you will be using for your ProductDeployments.\n   (the Product Service Account needs to be able to allocate Billing Accounts to any deployments)\n"+
+			"b. Navigate to https://admin.google.com/ac/roles and assign the Groups Editor role to this service account. (the Product Service account needs to be able to create a group for each deployment)\n", product.GetGoogleProjectId())
 		pterm.Printf("👉 Your product has an initial development deployment, Development 001, with project ID %s. It can be found at %s.\n", initialProductDeployment.GetGoogleProjectId(), initialProductDeployment.GetInfrastructureUri())
-		pterm.Printf("👉 Retrieve a copy of your repository using the command: alis product get %s.%s \n", organisationID, productID)
+		pterm.Printf("👉 Retrieve a copy of your repository using the command: " + pterm.LightYellow(fmt.Sprintf("alis product get %s.%s \n", organisationID, productID)))
 		pterm.Println("👉 Open the repository in your IDE and create your first empty commit.")
 	},
 	Args:    validateProductArg,
