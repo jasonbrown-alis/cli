@@ -441,58 +441,6 @@ func createProductDeployment(ctx context.Context, productName string) (*pbProduc
 	return productDeployment, nil
 }
 
-// createInitialProductDeployment creates a new development product deployment for a new product
-func createInitialProductDeployment(ctx context.Context, productName string, owner string) (*pbProducts.ProductDeployment, error) {
-
-	// retrieve a copy of the Product Resource
-	product, err := alisProductsClient.GetProduct(ctx, &pbProducts.GetProductRequest{Name: productName})
-	if err != nil {
-		return nil, err
-	}
-
-	// Get additional user input
-	pterm.Info.Println("Creating initial development deployment - Development 001.")
-	env := pbProducts.ProductDeployment_DEV
-	displayName := "Development 001"
-	ptermTip.Printf("The Product (%s) has a billing account ID of %s\n", product.GetName(), strings.Split(product.GetBillingAccount(), "/")[1]+"\nNavigate to https://console.cloud.google.com/billing to see the billing accounts available to you.")
-	billingAccountID, err := askUserString("ProductDeployment Billing Account ID: ", `^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$`)
-	if err != nil {
-		return nil, err
-	}
-
-	op, err := alisProductsClient.CreateProductDeployment(ctx, &pbProducts.CreateProductDeploymentRequest{
-		Parent: product.GetName(),
-		ProductDeployment: &pbProducts.ProductDeployment{
-			Environment:    env,
-			Owner:          owner,
-			DisplayName:    displayName,
-			BillingAccount: "billingAccounts/" + billingAccountID,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// wait for the long-running operation to complete.
-	err = wait(ctx, op, "Creating a new Product Deployment", "Created a new Product Deployment", 300, true)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := alisOperationsClient.GetOperation(ctx, &pbOperations.GetOperationRequest{Name: op.GetName()})
-	if err != nil {
-		return nil, err
-	}
-
-	productDeployment := &pbProducts.ProductDeployment{}
-	err = res.GetResponse().UnmarshalTo(productDeployment)
-	if err != nil {
-		return nil, err
-	}
-
-	return productDeployment, nil
-}
-
 // askUserProductEnvs list the current envs and ask for updated values.
 func askUserProductEnvs(envs []*pbProducts.Product_Env) ([]*pbProducts.Product_Env, error) {
 

@@ -157,19 +157,18 @@ var createProductCmd = &cobra.Command{
 			return
 		}
 
-		// TODO: how do we handle an async flag in this case? Product needs to be created before we can create a deployment
 		// check if we need to wait for operation to complete.
-		//if asyncFlag {
-		//	pterm.Debug.Printf("GetOperation:\n%s\n", op)
-		//	pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
-		//} else {
-		// wait for the long-running operation to complete.
-		err = wait(cmd.Context(), op, "Creating "+organisation.GetName()+"/products/"+productID+" (may take a few minutes)", "Created "+organisation.GetName()+"/products/"+productID, 300, true)
-		if err != nil {
-			pterm.Error.Println(err)
-			return
+		if asyncFlag {
+			pterm.Debug.Printf("GetOperation:\n%s\n", op)
+			pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
+		} else {
+			// wait for the long-running operation to complete.
+			err = wait(cmd.Context(), op, "Creating "+organisation.GetName()+"/products/"+productID+" (may take a few minutes)", "Created "+organisation.GetName()+"/products/"+productID, 300, true)
+			if err != nil {
+				pterm.Error.Println(err)
+				return
+			}
 		}
-		//}
 
 		// Get the product resource
 		product, err := alisProductsClient.GetProduct(cmd.Context(),
@@ -179,48 +178,12 @@ var createProductCmd = &cobra.Command{
 			return
 		}
 
-		// set up the initial development deployment for the product
-		initialProductDeployment, err := createInitialProductDeployment(cmd.Context(), product.GetName(), product.GetOwner())
-		if err != nil {
-			pterm.Error.Println(err)
-			return
-		}
-		pterm.DefaultSection.Printf("Deploying %s (%s)", initialProductDeployment.GetDisplayName(), initialProductDeployment.GetGoogleProjectId())
-
-		pterm.Info.Printf("Updating deployment: %s\nversion: %s -> %s...\n", initialProductDeployment.GetGoogleProjectId(), initialProductDeployment.GetVersion(), product.GetVersion())
-		op, err = alisProductsClient.UpdateProductDeployment(cmd.Context(), &pbProducts.UpdateProductDeploymentRequest{
-			ProductDeployment: &pbProducts.ProductDeployment{
-				Name:    initialProductDeployment.GetName(),
-				Version: product.GetVersion(),
-			},
-			UpdateMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"version", "envs"},
-			},
-		})
-		if err != nil {
-			pterm.Error.Println(err)
-			return
-		}
-
-		// check if we need to wait for operation to complete.
-		if asyncFlag {
-			pterm.Debug.Printf("GetOperation:\n%s\n", op)
-			pterm.Success.Printf("Launched Update in async mode.\n see long-running operation " + op.GetName() + " to monitor state\n")
-		} else {
-			// wait for the long-running operation to complete.
-			err := wait(cmd.Context(), op, "Updating "+initialProductDeployment.GetName(), "Updated "+initialProductDeployment.GetName(), 300, true)
-			if err != nil {
-				pterm.Error.Println(err)
-				return
-			}
-		}
-
 		// display some user instructions to perform once a new product has been created.
 		ptermTip.Println("Now that you have a new product there are a few minor things you need to take care of:")
 		pterm.Printf("👉 Your product has a new service account: alis-exchange@%s.iam.gserviceaccount.com. The following permissions are required:\n"+
 			"a. Navigate to https://console.cloud.google.com/billing and give the Billing Account User role to relevant billing account you will be using for your ProductDeployments.\n   (the Product Service Account needs to be able to allocate Billing Accounts to any deployments)\n"+
 			"b. Navigate to https://admin.google.com/ac/roles and assign the Groups Editor role to this service account. (the Product Service account needs to be able to create a group for each deployment)\n", product.GetGoogleProjectId())
-		pterm.Printf("👉 Your product has an initial development deployment, Development 001, with project ID %s. It can be found at %s.\n", initialProductDeployment.GetGoogleProjectId(), initialProductDeployment.GetInfrastructureUri())
+		pterm.Printf("👉 Your product has an initial development deployment, Development 001.")
 		pterm.Printf("👉 Retrieve a copy of your repository using the command: " + pterm.LightYellow(fmt.Sprintf("alis product get %s.%s \n", organisationID, productID)))
 		pterm.Println("👉 Open the repository in your IDE and create your first empty commit.")
 	},
